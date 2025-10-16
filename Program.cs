@@ -2,6 +2,9 @@
 using System.Linq;
 using System.Text.RegularExpressions;
 using UnityToolTask;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 /*
  *Important info so far:
@@ -197,6 +200,32 @@ Parallel.ForEach(scenePaths, new ParallelOptions { MaxDegreeOfParallelism = 16 }
     var sw = new StreamWriter(outputFolder + "\\" + sceneName + dumpExt);
     sw.Write(tree);
     sw.Close();
+});
+
+//bonus task #1 now - first get syntax trees of every script
+var trees = scriptPaths.Select(x => CSharpSyntaxTree.ParseText(File.ReadAllText(x))).ToList();
+
+//still using parallel.foreach for bonus task #2
+Parallel.ForEach(trees, new ParallelOptions { MaxDegreeOfParallelism = 16 }, tree =>
+{
+    var root = tree.GetRoot();
+
+    foreach (var classNode in root.DescendantNodes().OfType<ClassDeclarationSyntax>())
+    {
+        //mono?
+        if (classNode.BaseList == null)
+            continue;
+        if (!classNode.BaseList.Types.Any(b => b.ToString().Contains("MonoBehaviour")))
+            continue;
+        //let's see the money (and by money i mean fields)
+        foreach (var field in classNode.Members.OfType<FieldDeclarationSyntax>())
+        {
+            var typeName = field.Declaration.Type.ToString();
+            //this is why we have the dict over class/script names as well
+            if(scriptsByName.ContainsKey(typeName))
+                scriptsByName[typeName].unused = false;
+        }
+    }
 });
 
 var csvString = "Relative Path,GUID";
