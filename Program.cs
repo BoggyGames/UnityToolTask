@@ -16,6 +16,7 @@ const string usString = @"UnusedStrings.csv";
 const string scnPattern = @"*.unity";
 const string csPattern = @"*.cs";
 const string dumpExt = @".unity.dump";
+const string metaExt = @".meta";
 
 if (args.Length != 2)
 {
@@ -76,6 +77,29 @@ catch (Exception ex)
 }
 
 Console.WriteLine("Scripts detected:\n" + string.Join(",\n", scriptPaths));
+
+var scriptsByGuid = new Dictionary<string, ScriptData>();
+var scriptsByName = new Dictionary<string, ScriptData>();
+
+//we're just reading the meta files here for guids
+foreach (var script in scriptPaths)
+{
+    var sr = new StreamReader(script + metaExt);
+    var name = Path.GetFileNameWithoutExtension(script);
+    var metaContent = sr.ReadToEnd();
+    sr.Close();
+
+    var guid = metaContent.Split('\n')[1].Split(' ')[1];
+    var newScript = new ScriptData()
+    {
+        Guid = guid,
+        relativePath = "Assets" + script.Split("Assets")[^1].Replace('\\', '/'),
+        unused = true
+    };
+    
+    scriptsByGuid[guid] = newScript;
+    scriptsByName[name] = newScript;
+}
 
 //hierarchy file for each scene while scanning for script usage
 //parallel.foreach for bonus task #2 ! we can safely do every scene separately, in parallel
@@ -151,6 +175,16 @@ Parallel.ForEach(scenePaths, new ParallelOptions { MaxDegreeOfParallelism = 16 }
             
             gameObjs.Add(fileID, name);
         }
+        else if (type == 114)
+        {
+            //MonoBehaviour - using a script. read the guid and set it to used
+            var sLine = obj.Split('\n')
+                .FirstOrDefault(l => l.Contains("m_Script"));
+            
+            //don't overlook the guid being hex!!! can't just do \d
+            var sGuid = Regex.Match(sLine, @"guid:\s*([0-9a-fA-F]+)").Groups[1].Value;
+            scriptsByGuid[sGuid].unused = false;
+        }
     }
     
     //finally, make the tree for this scene - recurse over these dicts from root
@@ -164,6 +198,15 @@ Parallel.ForEach(scenePaths, new ParallelOptions { MaxDegreeOfParallelism = 16 }
     sw.Write(tree);
     sw.Close();
 });
+
+var csvString = "Relative Path,GUID";
+foreach (var script in scriptsByName.Values)
+    if (script.unused)
+        csvString += "\n" + script.relativePath + "," + script.Guid;
+var sw = new StreamWriter(outputFolder + "\\" + usString);
+sw.Write(csvString);
+
+sw.Close();
 
 return 0;
 
