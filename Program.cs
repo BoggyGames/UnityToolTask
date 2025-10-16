@@ -36,7 +36,7 @@ if (!Directory.Exists(outputFolder))
     Directory.CreateDirectory(outputFolder);
 }
 
-//part 1: scene hierarchy analysis/dumps
+//part 1 data: scene hierarchy analysis/dumps
 
 var scenePaths = new List<string>();
 var assetPath = projectFolder + "\\Assets";
@@ -57,8 +57,29 @@ catch (Exception ex)
 
 Console.WriteLine("Scenes detected:\n" + string.Join(",\n", scenePaths));
 
-//hierarchy file for each scene
-foreach (var scene in (scenePaths))
+//part 2 data: unused scripts
+
+var scriptPaths = new List<string>();
+
+//scan for all scripts in assets
+try
+{
+    foreach (string file in Directory.EnumerateFiles(assetPath, csPattern, SearchOption.AllDirectories))
+    {
+        scriptPaths.Add(file);
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"Can't perform search: {ex.Message}");
+    return 1;
+}
+
+Console.WriteLine("Scripts detected:\n" + string.Join(",\n", scriptPaths));
+
+//hierarchy file for each scene while scanning for script usage
+//parallel.foreach for bonus task #2 ! we can safely do every scene separately, in parallel
+Parallel.ForEach(scenePaths, new ParallelOptions { MaxDegreeOfParallelism = 16 }, scene =>
 {
     var sr = new StreamReader(scene);
     var sceneName = Path.GetFileNameWithoutExtension(scene);
@@ -142,7 +163,7 @@ foreach (var scene in (scenePaths))
     var sw = new StreamWriter(outputFolder + "\\" + sceneName + dumpExt);
     sw.Write(tree);
     sw.Close();
-}
+});
 
 return 0;
 
